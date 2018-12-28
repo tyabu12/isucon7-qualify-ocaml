@@ -1,0 +1,9 @@
+(executable
+  (name        app)
+  (public_name isucon7-qualify-ocaml)
+  (libraries   views
+               cstruct
+               nocrypto
+               nocrypto.unix
+               ezjsonm
+               opium))

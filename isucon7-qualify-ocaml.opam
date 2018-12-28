@@ -1,0 +1,24 @@
+opam-version: "2.0"
+name: "isucon7-qualify-ocaml"
+version: "~dev"
+synopsis: "ISUCON7 予選問題の OCaml 参照実装 (非公式)"
+maintainer: "Tomohito YABU <tomotomo.y.1212@gmail.com>"
+authors: "Tomohito YABU <tomotomo.y.1212@gmail.com>"
+license: "MIT"
+homepage: "https://github.com/tyabu12/isucon7-qualify-ocaml"
+bug-reports: "https://github.com/tyabu12/isucon7-qualify-ocaml/issues"
+depends: [
+  "ocaml" {>= "4.03.0"}
+  "cstruct" {>= "3.2.1"}
+  "tyxml-ppx" {>= "4.3.0"}
+  "ezjsonm" {>= "0.6.0"}
+  "opium" {>= "0.16.0"}
+  "nocrypto" {>= "0.5.4"}
+  "dune" {build}
+]
+build: [
+  ["dune" "subst"] {pinned}
+  ["dune" "build" "-p" name "-j" jobs]
+  ["dune" "runtest" "-p" name "-j" jobs] {with-test}
+]
+dev-repo: "git+https://github.com/tyabu12/isucon7-qualify-ocaml.git"

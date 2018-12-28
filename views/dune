@@ -1,0 +1,4 @@
+(library
+  (name views)
+  (libraries tyxml)
+  (preprocess (pps tyxml-ppx)))
