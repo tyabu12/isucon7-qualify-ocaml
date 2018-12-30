@@ -1,5 +1,7 @@
 # ISUCON7 予選問題の OCaml 参照実装 (非公式)
 
+[![CircleCI](https://circleci.com/gh/tyabu12/isucon7-qualify-ocaml.svg?style=svg)](https://circleci.com/gh/tyabu12/isucon7-qualify-ocaml)
+
 OCaml の遊び用。
 
 ## 必要要件
