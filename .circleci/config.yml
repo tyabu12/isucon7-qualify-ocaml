@@ -35,13 +35,9 @@ jobs:
       - run:
           name: Check cache file or generate cache.
           command: |
-            set -x
-            ls ~/
-            if [ ! -f "${HOME}/docker-images.tar.gz" ]; then
-              docker-compose pull db
-              docker-compose build
-              docker images --filter "dangling=false" --format "{{.Repository}}" | xargs docker save | gzip > ~/docker-images.tar.gz
-            fi
+            docker-compose pull db
+            docker-compose build
+            docker images --filter "dangling=false" --format "{{.Repository}}" | xargs docker save | gzip > ~/docker-images.tar.gz
       - *save_docker_cache
 
   test:
@@ -59,12 +55,8 @@ jobs:
           name: Run bench
           command: >
             docker-compose run bench bash -c '
-              ./bin/bench
-                -remotes=${ISUBATA_APP_HOST}:${ISUBATA_APP_PORT}
-                -output /tmp/result.json &&
-              if [ $(cat /tmp/result.json | jq '.pass') != 'true' ]; then
-                exit 1;
-              fi'
+              ./bin/bench -remotes=${ISUBATA_APP_HOST}:${ISUBATA_APP_PORT} -output /tmp/result.json &&
+              if [ $(cat /tmp/result.json | jq '.pass') != 'true' ]; then exit 1; fi'
 
 workflows:
   version: 2
