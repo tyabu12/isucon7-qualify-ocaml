@@ -41,7 +41,7 @@ jobs:
       - *save_docker_cache
 
   test:
-    <<: *defaults
+    <<: *default_env
     machine: true
     steps:
       - checkout
