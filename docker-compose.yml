@@ -8,6 +8,7 @@ services:
         - isucon7-qualify-ocaml_app
     image: isucon7-qualify-ocaml_app
     environment:
+      - ISUBATA_APP_PORT=3000
       - ISUBATA_DB_HOST=db
       - ISUBATA_DB_PORT=3306
     working_dir: /opt/app
@@ -17,7 +18,7 @@ services:
     expose:
       - "3000"
     ports:
-      - "3000:3000"
+      - "$ISUBATA_APP_PORT:3000"
     privileged: true
     depends_on:
       - db

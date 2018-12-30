@@ -30,6 +30,9 @@ docker-compose run bench
 
 # アプリケーションのエラーログの確認
 docker-compose logs app
+
+# アクセス
+curl http://localhost
 ```
 
 ### ローカル
@@ -51,7 +54,7 @@ $EDITOR .env
 make exec
 
 # アクセス
-curl http://localhost:3000
+curl http://localhost
 ```
 
 ## 謝辞

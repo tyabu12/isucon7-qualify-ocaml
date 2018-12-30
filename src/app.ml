@@ -179,6 +179,7 @@ let () =
   let public_dir = env "ISUBATA_PUBLIC_DIR" "../public" in
   App.empty
   |> App.cmd_name "ISUCON7-qualify-ocaml"
+  |> App.port (env "ISUBATA_APP_PORT" "3000" |> int_of_string)
   |> middleware Cookie.m
   |> middleware Middleware.trace
   |> middleware (Middleware.static ~local_path:public_dir ~uri_prefix:"/" ())
