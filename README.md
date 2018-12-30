@@ -10,23 +10,24 @@ OCaml の遊び用。
 
 ## 実行方法
 
-```sh
-# 取得
-git clone git@github.com:tyabu12/isucon7-qualify-ocaml.git
-cd isucon7-qualify-ocaml
+実行にはDBが必要です。
 
+```sh
 # 依存ライブラリ群のインストール
-opam update
-# opium エラー回避 (https://github.com/rgrinberg/opium/issues/84)
-opam pin add -y --dev-repo opium
-opam pin add -yn isucon7-qualify-ocaml . &&
-opam install --deps-only isucon7-qualify-ocaml
+make deps
 
 # ビルド
 make
 
+# DBの環境変数の設定
+cp .env.example .env
+$EDITOR
+
 # 実行
 make exec
+
+# アクセス
+curl http://localhost:3000
 ```
 
 ## 謝辞
