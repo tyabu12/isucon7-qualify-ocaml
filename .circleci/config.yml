@@ -21,7 +21,11 @@ aliases:
   - &load_docker_cache
     run:
       name: Load docker images
-      command: docker load -i ~/docker-images.tar.gz && docker images
+      command: |
+        if [ -f ~/docker-images.tar.gz ]; then
+          docker load -i ~/docker-images.tar.gz
+        fi
+        docker images
 
 jobs:
   build:
