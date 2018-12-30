@@ -3,9 +3,9 @@ version: 2
 aliases:
   - &default_env
     environment:
-      CACHE_KEY: 1
+      CACHE_KEY: 2
       # NOTE: change save_cache.paths if change this
-      DOCKER_IMAGE_CACHE_FILE: "~/cache/images.tar.gz"
+      DOCKER_IMAGE_CACHE_FILE: "cache/images.tar.gz"
   - &create_cache_key_file
     run:
       name: Create cache control key file
