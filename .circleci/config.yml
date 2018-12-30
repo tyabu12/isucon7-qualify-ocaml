@@ -37,7 +37,7 @@ jobs:
           command: |
             docker-compose pull db
             docker-compose build
-            docker images --filter "dangling=false" --format "{{.Repository}}" | xargs docker save | gzip > ~/docker-images.tar.gz
+            docker images --format "{{.ID}}" | xargs docker save | gzip > ~/docker-images.tar.gz
       - *save_docker_cache
 
   test:
