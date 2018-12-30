@@ -21,7 +21,7 @@ make
 
 # DBの環境変数の設定
 cp .env.example .env
-$EDITOR
+$EDITOR .env
 
 # 実行
 make exec
