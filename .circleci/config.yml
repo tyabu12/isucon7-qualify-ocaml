@@ -13,6 +13,9 @@ jobs:
           keys:
             - docker-cache-{{ .Branch }}
             - docker-cache
+      - run:
+          name: Setup Environment Variables
+          command: echo 'export DOCKER_IMAGE_CACHE_FILE="$DOCKER_IMAGE_CACHE_FILE"' >> $BASH_ENV
       - checkout
       - run:
           name: Check cache file or generate cache.
@@ -37,6 +40,9 @@ jobs:
           keys:
             - docker-cache-{{ .Branch }}
             - docker-cache
+      - run:
+          name: Setup Environment Variables
+          command: echo 'export DOCKER_IMAGE_CACHE_FILE="$DOCKER_IMAGE_CACHE_FILE"' >> $BASH_ENV
       - run:
           name: Load docker images
           command: docker load -i "$DOCKER_IMAGE_CACHE_FILE"
