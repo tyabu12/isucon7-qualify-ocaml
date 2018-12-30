@@ -20,8 +20,8 @@ rebuild: clean build
 exec:
 	dune exec isucon7-qualify-ocaml
 
-# test:
-# 	dune runtest
+test:
+	dune runtest
 
 clean:
 	dune clean
