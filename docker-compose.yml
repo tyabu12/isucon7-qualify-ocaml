@@ -1,8 +1,12 @@
-version: "3"
+version: '3.2'
 services:
 
   app:
-    build: ./docker/app
+    build:
+      context: ./docker/app
+      cache_from:
+        - isucon7-qualify-ocaml_app
+    image: isucon7-qualify-ocaml_app
     environment:
       - ISUBATA_DB_HOST=db
       - ISUBATA_DB_PORT=3306
@@ -31,7 +35,11 @@ services:
       - "3306"
 
   bench:
-    build: ./docker/bench
+    build:
+      context: ./docker/bench
+      cache_from:
+        - isucon7-qualify-ocaml_bench
+    image: isucon7-qualify-ocaml_bench
     environment:
       - ISUBATA_APP_HOST=app
       - ISUBATA_APP_PORT=3000
