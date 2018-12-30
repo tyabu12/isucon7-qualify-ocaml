@@ -1,6 +1,7 @@
 defaults: &defaults
   environment:
-    - DOCKER_IMAGE_CACHE_FILE: "~/.cache/images.tar.gz"
+    # NOTE: change save_cache.paths if change this
+    DOCKER_IMAGE_CACHE_FILE: "~/cache/images.tar.gz"
 
 version: 2
 jobs:
@@ -25,7 +26,7 @@ jobs:
       - save_cache:
           key: docker-cache-{{ .Branch }}
           paths:
-            - $DOCKER_IMAGE_CACHE_FILE
+            - ~/cache/images.tar.gz
 
   test:
     <<: *defaults
