@@ -3,7 +3,7 @@ version: 2
 aliases:
   - &default_env
     environment:
-      CACHE_KEY: 2
+      CACHE_KEY: 3
       # NOTE: change save_cache.paths if change this
       DOCKER_IMAGE_CACHE_FILE: "cache/images.tar.gz"
   - &create_cache_key_file
@@ -33,8 +33,8 @@ jobs:
           name: Check cache file or generate cache.
           command: |
             if [ ! -f "$DOCKER_IMAGE_CACHE_FILE" ]; then
+              docker-compose pull db
               docker-compose build
-              docker-compose pull
               dirname "$DOCKER_IMAGE_CACHE_FILE" | xargs mkdir -p
               docker images --filter "dangling=false" --format "{{.Repository}}" | xargs docker save | gzip > "$DOCKER_IMAGE_CACHE_FILE"
             fi
