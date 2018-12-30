@@ -14,6 +14,8 @@ services:
     volumes:
       - opam-data:/root/.opam
       - .:/opt/app
+    expose:
+      - "3000"
     ports:
       - "3000:3000"
     privileged: true
@@ -34,6 +36,19 @@ services:
       - ./db:/docker-entrypoint-initdb.d:ro
     expose:
       - "3306"
+
+  bench:
+    build:
+      context: ./docker
+      dockerfile: Dockerfile-bench
+    command: >
+      dockerize
+        -wait http://app:3000
+        -wait-retry-interval 15s
+        -timeout 10m
+        ./bin/bench -remotes=app:3000 -test
+    depends_on:
+      - app
 
 volumes:
   opam-data:
