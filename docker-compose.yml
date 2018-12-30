@@ -2,28 +2,21 @@ version: "3"
 services:
 
   app:
-    build: ./docker
+    build: ./docker/app
     command: >
-      bash -cx "
-        source ~/.profile &&
-        opam update &&
-        # https://github.com/rgrinberg/opium/issues/84
-        opam pin add -y --dev-repo opium &&
-        opam pin add -yn isucon7-qualify-ocaml . &&
-        opam install --deps-only isucon7-qualify-ocaml
-        dune clean &&
-        # dune build @install &&
-        tail -f /dev/null" # stay awake
+      dockerize
+        -wait tcp://db:3306
+        make exec
     environment:
       - ISUBATA_DB_HOST=db
+      - ISUBATA_DB_PORT=3306
     working_dir: /opt/app
     volumes:
       - opam-data:/root/.opam
       - .:/opt/app
     ports:
-      - "80:3000"
+      - "3000:3000"
     privileged: true
-    restart: always
     depends_on:
       - db
 
@@ -31,9 +24,12 @@ services:
     image: mysql:5.7
     # command: --max-connections=1000 --max-allowed-packet=512M
     environment:
-      - MYSQL_ALLOW_EMPTY_PASSWORD=yes
-      - MYSQL_ROOT_PASSWORD=
+      - MYSQL_USER=$ISUBATA_DB_USER
+      - MYSQL_PASSWORD=$ISUBATA_DB_PASSWORD
       - MYSQL_DATABASE=isubata
+      - MYSQL_RANDOM_ROOT_PASSWORD=yes
+      # - MYSQL_ALLOW_EMPTY_PASSWORD=yes
+      # - MYSQL_ROOT_PASSWORD=
     volumes:
       - ./db:/docker-entrypoint-initdb.d:ro
     expose:
