@@ -6,8 +6,8 @@ deps:
 	opam update
 	# https://github.com/rgrinberg/opium/issues/84
 	opam pin add -y --dev-repo opium
-	opam pin add -yn isucon7-qualify-ocaml .
-	opam install -y --deps-only isucon7-qualify-ocaml
+	opam pin add -yn .
+	opam install -y --deps-only .
 
 build:
 	dune build
