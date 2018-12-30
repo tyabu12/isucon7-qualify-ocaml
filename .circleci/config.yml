@@ -1,0 +1,62 @@
+defaults: &defaults
+  environment:
+    - DOCKER_IMAGE_CACHE_FILE: "~/.cache/images.tar.gz"
+
+version: 2
+jobs:
+  build:
+    <<: *defaults
+    machine: true
+    steps:
+      - restore_cache:
+          keys:
+            - docker-cache-{{ .Branch }}
+            - docker-cache
+      - checkout
+      - run:
+          name: Check cache file or generate cache.
+          command: |
+            if [ ! -f "$DOCKER_IMAGE_CACHE_FILE" ]; then
+              docker-compose build
+              docker-compose pull
+              dirname "$DOCKER_IMAGE_CACHE_FILE" | xargs mkdir -p
+              docker images --filter "dangling=false" --format "{{.Repository}}" | xargs docker save | gzip > "$DOCKER_IMAGE_CACHE_FILE"
+            fi
+      - save_cache:
+          key: docker-cache-{{ .Branch }}
+          paths:
+            - $DOCKER_IMAGE_CACHE_FILE
+
+  test:
+    <<: *defaults
+    machine: true
+    steps:
+      - checkout
+      - restore_cache:
+          keys:
+            - docker-cache-{{ .Branch }}
+            - docker-cache
+      - run:
+          name: Load docker images
+          command: docker load -i "$DOCKER_IMAGE_CACHE_FILE"
+      - run:
+          name: Set up env
+          command: cp .env.example .env
+      - run:
+          name: Run bench
+          command: >
+            docker-compose run bench bash -c '
+              ./bin/bench
+                -remotes=${ISUBATA_APP_HOST}:${ISUBATA_APP_PORT}
+                -output /tmp/result.json &&
+              if [ $(cat /tmp/result.json | jq '.pass') != 'true' ]; then
+                exit 1;
+              fi'
+workflows:
+  version: 2
+  build_and_test:
+    jobs:
+      - build
+      - test:
+          requires:
+            -build
