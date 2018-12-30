@@ -46,7 +46,7 @@ jobs:
       - *restore_docker_cache
       - run:
           name: Load docker images
-          command: docker load -i "$DOCKER_IMAGE_CACHE_FILE"
+          command: docker load -i ~/docker-images.tar.gz
       - run:
           name: Set up env
           command: cp .env.example .env
