@@ -18,6 +18,10 @@ aliases:
       key: docker-cache-{{ checksum "cache_key" }}-{{ checksum "docker/app/Dockerfile" }}
       paths:
         - ~/docker-images.tar.gz
+  - &load_docker_cache
+    run:
+      name: Load docker images
+      command: docker load -i ~/docker-images.tar.gz && docker images
 
 jobs:
   build:
@@ -27,12 +31,13 @@ jobs:
       - checkout
       - *create_cache_key_file
       - *restore_docker_cache
+      - *load_docker_cache
       - run:
           name: Check cache file or generate cache.
           command: |
             set -x
             ls ~/
-            if [ ! -f "~/docker-images.tar.gz" ]; then
+            if [ ! -f "${HOME}/docker-images.tar.gz" ]; then
               docker-compose pull db
               docker-compose build
               docker images --filter "dangling=false" --format "{{.Repository}}" | xargs docker save | gzip > ~/docker-images.tar.gz
@@ -46,9 +51,7 @@ jobs:
       - checkout
       - *create_cache_key_file
       - *restore_docker_cache
-      - run:
-          name: Load docker images
-          command: docker load -i ~/docker-images.tar.gz
+      - *load_docker_cache
       - run:
           name: Set up env
           command: cp .env.example .env
