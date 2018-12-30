@@ -176,7 +176,7 @@ let get_icon = get "/icon/:filename" get_mock
 let () =
   Random.self_init ();
   Nocrypto_entropy_unix.initialize ();
-  let public_dir = env "ISUBATA_PUBLIC_DIR" "./public" in
+  let public_dir = env "ISUBATA_PUBLIC_DIR" "../public" in
   App.empty
   |> App.cmd_name "ISUCON7-qualify-ocaml"
   |> middleware Cookie.m
