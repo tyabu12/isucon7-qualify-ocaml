@@ -10,7 +10,29 @@ OCaml の遊び用。
 
 ## 実行方法
 
-実行にはDBが必要です。
+### Docker
+
+[docker-compose](https://docs.docker.com/compose/install/) が必要です。
+
+```sh
+# 環境変数のコピー
+cp .env.example .env
+
+# 以下は初回のみ、コンテナのビルドが走るので時間がかかります
+
+# アプリケーションコンテナとDBコンテナを起動
+docker-compose up -d app db
+
+# ベンチを投げる
+docker-compose run bench
+
+# アプリケーションのエラーログの確認
+docker-compose logs app
+```
+
+### ローカル
+
+実行にはDBが必要です。MySQL 5.7 を推奨。
 
 ```sh
 # 依存ライブラリ群のインストール
