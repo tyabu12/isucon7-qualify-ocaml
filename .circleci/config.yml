@@ -30,7 +30,7 @@ jobs:
       - run:
           name: Check cache file or generate cache.
           command: |
-            if [ ! -f "$DOCKER_IMAGE_CACHE_FILE" ]; then
+            if [ ! -f "~/docker-images.tar.gz" ]; then
               docker-compose pull db
               docker-compose build
               docker images --filter "dangling=false" --format "{{.Repository}}" | xargs docker save | gzip > ~/docker-images.tar.gz
