@@ -176,11 +176,12 @@ let get_icon = get "/icon/:filename" get_mock
 let () =
   Random.self_init ();
   Nocrypto_entropy_unix.initialize ();
+  let public_dir = env "ISUBATA_PUBLIC_DIR" "./public" in
   App.empty
   |> App.cmd_name "ISUCON7-qualify-ocaml"
   |> middleware Cookie.m
   |> middleware Middleware.trace
-  |> middleware (Middleware.static ~local_path:"./public" ~uri_prefix:"/" ())
+  |> middleware (Middleware.static ~local_path:public_dir ~uri_prefix:"/" ())
   |> get_initialize
   |> get_index
   |> get_register

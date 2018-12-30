@@ -1,3 +1,6 @@
+include .env
+export $(shell sed 's/=.*//' .env)
+
 .DEFAULT_GOAL := build
 
 .PHONY: deps build rebuild exec test clean
@@ -15,7 +18,7 @@ build:
 rebuild: clean build
 
 exec:
-	dune exec ./app.exe
+	dune exec isucon7-qualify-ocaml
 
 # test:
 # 	dune runtest
