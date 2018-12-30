@@ -7,4 +7,7 @@ eval `opam env`
 make deps
 make rebuild
 
-exec "$@"
+# Wait for db
+dockerize \
+  -wait tcp://${ISUBATA_DB_HOST}:${ISUBATA_DB_PORT} \
+  "$@"

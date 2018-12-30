@@ -15,6 +15,15 @@ RUN set -eux; \
   ./bin/gen-initial-dataset; \
   : "Install dockerize"; \
   curl -sSL https://github.com/jwilder/dockerize/releases/download/$DOCKERIZE_VERSION/dockerize-linux-amd64-$DOCKERIZE_VERSION.tar.gz \
-    | tar xz -C /usr/local/bin
+    | tar xz -C /usr/local/bin; \
+  : "Install jq to analyze bench result"; \
+  apt-get update; \
+  DEBIAN_FRONTEND=noninteractive apt-get install --no-install-recommends -y jq; \
+  : "Clean up"; \
+  apt-get clean; \
+  rm -rf /var/lib/apt/lists/*
 
-CMD ["./bin/bench"]
+COPY docker-entrypoint.sh /
+
+ENTRYPOINT ["/docker-entrypoint.sh"]
+CMD ["bash", "-c", "./bin/bench -remotes=${ISUBATA_APP_HOST}:${ISUBATA_APP_PORT}"]

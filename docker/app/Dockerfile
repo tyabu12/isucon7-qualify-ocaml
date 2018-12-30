@@ -50,3 +50,4 @@ RUN set -eux; \
 COPY docker-entrypoint.sh /
 
 ENTRYPOINT ["/docker-entrypoint.sh"]
+CMD ["make", "exec"]
