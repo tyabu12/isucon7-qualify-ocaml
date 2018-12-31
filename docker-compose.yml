@@ -7,18 +7,17 @@ services:
       cache_from:
         - isucon7-qualify-ocaml_app
     image: isucon7-qualify-ocaml_app
-    environment:
-      - ISUBATA_APP_PORT=3000
-      - ISUBATA_DB_HOST=db
-      - ISUBATA_DB_PORT=3306
+    # Do nothing for development
+    # command: tail -f /dev/null
+    env_file: .env
     working_dir: /opt/app
     volumes:
       - opam-data:/root/.opam
       - .:/opt/app
     expose:
-      - "3000"
+      - "$ISUBATA_APP_PORT"
     ports:
-      - "$ISUBATA_APP_PORT:3000"
+      - "${ISUBATA_APP_PUBLISH_PORT}:${ISUBATA_APP_PORT}"
     privileged: true
     depends_on:
       - db
@@ -41,9 +40,7 @@ services:
       cache_from:
         - isucon7-qualify-ocaml_bench
     image: isucon7-qualify-ocaml_bench
-    environment:
-      - ISUBATA_APP_HOST=app
-      - ISUBATA_APP_PORT=3000
+    env_file: .env
     depends_on:
       - app
 

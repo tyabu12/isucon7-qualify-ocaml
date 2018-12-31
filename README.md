@@ -18,7 +18,7 @@ OCaml の遊び用。
 
 ```sh
 # 環境変数のコピー
-cp .env.example .env
+cp .env.docker .env
 
 # 以下は初回のみ、コンテナのビルドが走るので時間がかかります
 
@@ -47,7 +47,7 @@ make deps
 make
 
 # DBの環境変数の設定
-cp .env.example .env
+cp .env.local .env
 $EDITOR .env
 
 # 実行

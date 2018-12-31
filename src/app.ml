@@ -177,9 +177,11 @@ let () =
   Random.self_init ();
   Nocrypto_entropy_unix.initialize ();
   let public_dir = env "ISUBATA_PUBLIC_DIR" "../public" in
+  let port = env "ISUBATA_APP_PORT" "3000" |> int_of_string in
+  print_endline ("port: " ^ (port |> string_of_int));
   App.empty
   |> App.cmd_name "ISUCON7-qualify-ocaml"
-  |> App.port (env "ISUBATA_APP_PORT" "3000" |> int_of_string)
+  |> App.port port
   |> middleware Cookie.m
   |> middleware Middleware.trace
   |> middleware (Middleware.static ~local_path:public_dir ~uri_prefix:"/" ())
