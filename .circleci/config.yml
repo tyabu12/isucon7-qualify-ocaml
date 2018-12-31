@@ -11,11 +11,12 @@ aliases:
   - &restore_docker_cache
     restore_cache:
       keys:
-        - docker-cache-{{ checksum "cache_key" }}-{{ checksum "docker/app/Dockerfile" }}
+        - docker-cache-{{ checksum "cache_key" }}-{{ checksum "docker/bench/Dockerfile" }}-{{ checksum "docker/app/Dockerfile" }}
+        - docker-cache-{{ checksum "cache_key" }}-{{ checksum "docker/bench/Dockerfile" }}
         - docker-cache-{{ checksum "cache_key" }}
   - &save_docker_cache
     save_cache:
-      key: docker-cache-{{ checksum "cache_key" }}-{{ checksum "docker/app/Dockerfile" }}
+      key: docker-cache-{{ checksum "cache_key" }}-{{ checksum "docker/bench/Dockerfile" }}-{{ checksum "docker/app/Dockerfile" }}
       paths:
         - ~/docker-images.tar.gz
   - &load_docker_cache
