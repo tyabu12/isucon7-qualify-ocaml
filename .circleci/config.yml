@@ -58,7 +58,7 @@ jobs:
       - *load_docker_cache
       - run:
           name: Set up env
-          command: cp .env.example .env
+          command: cp .env.docker .env
       - run:
           name: Run bench
           command: >
