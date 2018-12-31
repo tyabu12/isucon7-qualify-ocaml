@@ -9,9 +9,6 @@ homepage: "https://github.com/tyabu12/isucon7-qualify-ocaml"
 bug-reports: "https://github.com/tyabu12/isucon7-qualify-ocaml/issues"
 depends: [
   "ocaml" {>= "4.03.0"}
-  "caqti" {>= "1.0.0"}
-  "caqti-lwt" {>= "1.0.0"}
-  "caqti-driver-mariadb" {>= "1.0.0"}
   "cstruct" {>= "3.2.1"}
   "tyxml-ppx" {>= "4.3.0"}
   "ezjsonm" {>= "0.6.0"}

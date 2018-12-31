@@ -1,6 +1,4 @@
 open Opium.Std
-module Caqti = Caqti_lwt
-(* module Caqti_driver = Caqti_driver_mariadb *)
 
 (* TODO: output error_log file? *)
 let or_die where = function
@@ -10,26 +8,6 @@ let or_die where = function
 
 let env var default =
   try Sys.getenv var with Not_found -> default
-
-(* let avatar_max_bytes = 1 * 1024 * 1024 *)
-let db =
-  let dsn =
-    let scheme = "mariadb" in
-    let host = env "ISUBATA_DB_HOST" "127.0.0.1" in
-    let port = env "ISUBATA_DB_PORT" "3306" |> int_of_string in
-    let userinfo =
-      let user = env "ISUBATA_DB_USER" "root" in
-      let password = env "ISUBATA_DB_PASSWORD" "" in
-      user ^ (if password = "" then "" else ":" ^ password)
-    in
-    Uri.make ~scheme ~userinfo ~host ~port ()
-  in
-  print_endline ("Connecting to " ^ (Uri.to_string dsn));
-  match Caqti.connect_pool ~max_size:20 dsn with
-  | Ok pool ->
-    print_endline "Succeeded to connect db.";
-    pool
-  | Error err -> Caqti_error.show err |> failwith
 
 let random_string n =
   let s = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789" in
@@ -41,18 +19,6 @@ let random_string n =
 
 let form_value dict key =
   List.assoc key dict |> List.hd
-
-module User = struct
-  type t = {
-    id : int;
-    name : string;
-    salt : string;
-    password : string;
-    display_name : string;
-    avatar_icon : string;
-    (* created_at : ; *)
-  }
-end
 
 let sess_user_id req =
   let res = Session.get req ~key:"user_id" in
@@ -125,15 +91,15 @@ end
 let post_register = post "/register" begin fun req ->
   App.urlencoded_pairs_of_body req
   |> Lwt.map begin fun dict ->
-    let name = List.hd (List.assoc "name" dict) in
-    let passwd = List.hd (List.assoc "password" dict) in
-    if String.length name = 0 || String.length passwd = 0 then
-      no_content |> respond ~code:`Bad_request
-    else begin
-      let user_id = register name passwd  in
-      redirect (Uri.of_string "/")
-      |> sess_set_user_id ~user_id
-    end
+      let name = List.hd (List.assoc "name" dict) in
+      let passwd = List.hd (List.assoc "password" dict) in
+      if String.length name = 0 || String.length passwd = 0 then
+        no_content |> respond ~code:`Bad_request
+      else begin
+        let user_id = register name passwd  in
+        redirect (Uri.of_string "/")
+        |> sess_set_user_id ~user_id
+      end
   end
 end
 
@@ -212,7 +178,7 @@ let () =
   Nocrypto_entropy_unix.initialize ();
   let public_dir = env "ISUBATA_PUBLIC_DIR" "../public" in
   let port = env "ISUBATA_APP_PORT" "3000" |> int_of_string in
-  print_endline ("expose port: " ^ (port |> string_of_int));
+  print_endline ("port: " ^ (port |> string_of_int));
   App.empty
   |> App.cmd_name "ISUCON7-qualify-ocaml"
   |> App.port port

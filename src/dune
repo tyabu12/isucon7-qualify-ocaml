@@ -2,9 +2,6 @@
   (name        app)
   (public_name isucon7-qualify-ocaml)
   (libraries   views
-               caqti
-               caqti-lwt
-               caqti-driver-mariadb
                cstruct
                nocrypto
                nocrypto.unix
