@@ -63,7 +63,7 @@ jobs:
           name: Run bench
           command: >
             docker-compose run bench bash -c '
-              ./bin/bench -remotes=${ISUBATA_APP_HOST}:${ISUBATA_APP_PORT} -output /tmp/result.json &&
+              ./bin/bench -remotes=${ISUBATA_APP_HOST}:${ISUBATA_APP_PORT} -test -output /tmp/result.json &&
               if [ $(cat /tmp/result.json | jq '.pass') != 'true' ]; then exit 1; fi'
 
 workflows:
