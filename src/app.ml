@@ -9,16 +9,40 @@ let or_die where = function
 module DB = struct
   include Mariadb.Blocking
 
-  (* Just execute query *)
-  let just_exec dbh query =
+  (* val exec : t -> string -> ?params:Field.value array -> unit ->
+    (Stmt.t * Res.t, Mariadb.Blocking.error) result *)
+  let exec dbh query ?(params = [||]) () =
     match prepare dbh query with
     | Ok stmt -> begin
-      match Stmt.execute stmt [||] with
-      | Ok _ -> Stmt.close stmt
-      | Error _ as err -> err
+      match Stmt.execute stmt params with
+      | Ok res -> Ok (stmt, res)
+      | Error _ as err -> Stmt.close stmt |> ignore; err
       end
     | Error _ as err -> err
+
+  (* Just execute query. return nothing *)
+  (* val just_exec : t -> string -> ?params:Field.value array -> unit
+    -> unit Mariadb.Blocking.result *)
+  let just_exec dbh query ?(params = [||]) () =
+    match exec dbh query ~params () with
+    | Ok (stmt, _) -> Stmt.close stmt
+    | Error _ as err -> err
+
+  let last_insert_id dbh () =
+    let query = "SELECT LAST_INSERT_ID()" in
+    let stmt, res = exec dbh query () |> or_die "last_insert_id" in
+    assert (Res.num_rows res = 1);
+    let id =
+      match Res.fetch (module Row.Array) res |> or_die "last_insert_id" with
+      | Some row -> row.(0) |> Field.int
+      | None -> assert false
+    in
+    Stmt.close stmt |> or_die "last_insert_id";
+    id
+
 end
+
+module Time = DB.Time
 
 let env var default =
   try Sys.getenv var with Not_found -> default
@@ -40,50 +64,101 @@ let db =
   DB.just_exec dbh {|
       SET SESSION
         sql_mode='TRADITIONAL,NO_AUTO_VALUE_ON_ZERO,ONLY_FULL_GROUP_BY'
-    |} |> or_die "DB.just_exec";
+    |} () |> or_die "DB.just_exec";
   print_endline "Succeeded to connect db.";
   dbh
 
-let random_string n =
-  let s = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789" in
-  let z = String.length s in
-  String.init n (fun _ ->
-    Random.int z
-    |> String.unsafe_get s
-  )
+module User = struct
+  type t = {
+    id : int option;
+    channel_id : int option;
+    user_id : int option;
+    content : string option;
+    created_at : Time.t option;
+  }
+
+  let get_from_row row =
+    let find key = DB.Row.StringMap.find key row in
+    let id = find "id" |> DB.Field.int_opt in
+    let channel_id = find "channel_id" |> DB.Field.int_opt in
+    let user_id = find "user_id" |> DB.Field.int_opt in
+    let content = find "content" |> DB.Field.string_opt in
+    let created_at = find "created_at" |> DB.Field.time_opt in
+    {id; channel_id; user_id; content; created_at}
+
+  let get user_id =
+    let stmt =
+      DB.prepare db "SELECT * FROM user WHERE id = ?" |> or_die "User.get" in
+    let res = DB.Stmt.execute stmt [| `Int user_id |] |> or_die "User.get" in
+    assert (DB.Res.num_rows res = 1);
+    match DB.Res.fetch (module DB.Row.Map) res |> or_die "User.get" with
+    | Some row -> Some (get_from_row row)
+    | None -> None
+end
 
 let form_value dict key =
   List.assoc key dict |> List.hd
 
 let sess_user_id req =
-  let res = Session.get req ~key:"user_id" in
-  match res with
-  | Some user_id when user_id <> "0" ->
-    failwith "Not implemented"
+  match  Session.get req ~key:"user_id" with
+  | Some user_id when user_id <> "0" -> Some (int_of_string user_id)
   | _ -> None
 
 let sess_set_user_id res ~user_id:user_id =
   Session.set res ~key:"user_id" ~data:user_id ()
 
 let register user_name passwd =
+  let random_string n =
+    let s =
+      "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789" in
+    let len = String.length s in
+    String.init n (fun _ ->
+      Random.int len
+      |> String.unsafe_get s
+    )
+  in
+  let hex_string_of_cstruct c =
+    let hexdump_pp fmt t =
+      Format.pp_open_box fmt 0;
+      for i = 0 to Cstruct.len t - 1 do
+        Cstruct.get_char t i |> Char.code |> Format.fprintf fmt "%.2x"
+      done;
+      Format.pp_close_box fmt ()
+    in
+    let b = Buffer.create (Cstruct.len c * 2) in
+    let f = Format.formatter_of_buffer b in
+    Format.fprintf f "%a@." hexdump_pp c;
+    Buffer.to_bytes b |> Bytes.unsafe_to_string
+  in
   let open Nocrypto in
   let salt = random_string 20 in
   let digest =
     salt ^ passwd
     |> Cstruct.of_string
     |> Hash.SHA1.digest
+    |> hex_string_of_cstruct
   in
-  let digest =
-    let b = Buffer.create 30 in
-    Cstruct.hexdump_to_buffer b digest;
-    Buffer.to_bytes b |> Bytes.unsafe_to_string
+  print_endline (
+    "Registering user\n"
+    "user_name:" ^ user_name ^ ", "
+    ^ "salt:" ^ salt ^ ", "
+    ^ "digest:" ^ digest);
+  let query = {|
+    INSERT INTO user
+      (name, salt, password, display_name, avatar_icon, created_at)
+    VALUES (?, ?, ?, ?, ?, NOW())
+  |} in
+  let params =
+    let user_name = `String user_name in
+    let salt = `String salt in
+    let digest = `String digest in
+    let display_name = user_name in
+    let avatar_icon = `String "default.png" in
+    [| user_name; salt; digest; display_name; avatar_icon |]
   in
-  print_endline begin
-    "user_name:" ^ user_name ^ " ,"
-    ^ "salt:" ^ salt ^ " ,"
-    ^ "digest:" ^ digest
-  end;
-  failwith "Not implemented"
+  DB.just_exec db query ~params () |> or_die "register";
+  print_endline "Succeeded to registering user.";
+  DB.last_insert_id db ()
 
 let no_content = `String ""
 
@@ -102,7 +177,9 @@ end
 (* routes *)
 
 let get_initialize = get "/initialize" begin fun _ ->
-  let db_just_exec query = DB.just_exec db query |> or_die "get_initialize" in
+  let db_just_exec query =
+    DB.just_exec db query () |> or_die "get_initialize"
+  in
   db_just_exec "DELETE FROM user WHERE id > 1000";
   db_just_exec "DELETE FROM image WHERE id > 1001";
   db_just_exec "DELETE FROM channel WHERE id > 10";
@@ -139,9 +216,9 @@ let post_register = post "/register" begin fun req ->
     if String.length name = 0 || String.length passwd = 0 then
       no_content |> respond ~code:`Bad_request
     else begin
-      let user_id = register name passwd  in
+      let user_id = register name passwd in
       redirect (Uri.of_string "/")
-      |> sess_set_user_id ~user_id
+      |> sess_set_user_id ~user_id:(string_of_int user_id)
     end
   end
 end
@@ -184,7 +261,7 @@ let post_message = post "/message" begin fun req ->
       no_content |> respond ~code:`Forbidden
     | message, channel_id ->
       print_endline begin
-        "user_id:" ^ user_id  ^ ", "
+        "user_id:" ^ string_of_int user_id  ^ ", "
         ^ "message:" ^ message ^ ", "
         ^ "channel_id:" ^ channel_id
       end;
