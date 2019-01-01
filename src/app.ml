@@ -10,19 +10,19 @@ module DB = struct
   include Mariadb.Blocking
 
   (* val exec : t -> string -> ?params:Field.value array -> unit ->
-    (Stmt.t * Res.t, Mariadb.Blocking.error) result *)
+     (Stmt.t * Res.t, Mariadb.Blocking.error) result *)
   let exec dbh query ?(params = [||]) () =
     match prepare dbh query with
     | Ok stmt -> begin
-      match Stmt.execute stmt params with
-      | Ok res -> Ok (stmt, res)
-      | Error _ as err -> Stmt.close stmt |> ignore; err
+        match Stmt.execute stmt params with
+        | Ok res -> Ok (stmt, res)
+        | Error _ as err -> Stmt.close stmt |> ignore; err
       end
     | Error _ as err -> err
 
   (* Just execute query. return nothing *)
   (* val just_exec : t -> string -> ?params:Field.value array -> unit
-    -> unit Mariadb.Blocking.result *)
+     -> unit Mariadb.Blocking.result *)
   let just_exec dbh query ?(params = [||]) () =
     match exec dbh query ~params () with
     | Ok (stmt, _) -> Stmt.close stmt
@@ -76,29 +76,39 @@ let db =
 module User = struct
   type t = {
     id : int option;
-    channel_id : int option;
-    user_id : int option;
-    content : string option;
+    name : string option;
+    salt : string option;
+    password : string option;
+    display_name : string option;
+    avatar_icon : string option;
     created_at : Time.t option;
   }
 
   let get_from_row row =
     let find key value_of_field = DB.row_find row key value_of_field in
     let id = find "id" DB.Field.int in
-    let channel_id = find "channel_id" DB.Field.int in
-    let user_id = find "user_id" DB.Field.int in
-    let content = find "content" DB.Field.string in
+    let name = find "name" DB.Field.string in
+    let salt = find "salt" DB.Field.string in
+    let password = find "password" DB.Field.string in
+    (* let display_name = find "display_name" DB.Field.string in *)
+    let display_name = None in
+    (* let avatar_icon = find "avatar_icon" DB.Field.string in *)
+    let avatar_icon = None in
     let created_at = find "created_at" DB.Field.time in
-    {id; channel_id; user_id; content; created_at}
+    {id; name; salt; password; display_name; avatar_icon; created_at}
 
   let get user_id =
     let stmt =
       DB.prepare db "SELECT * FROM user WHERE id = ?" |> or_die "User.get" in
     let res = DB.Stmt.execute stmt [| `Int user_id |] |> or_die "User.get" in
     assert (DB.Res.num_rows res = 1);
-    match DB.Res.fetch (module DB.Row.Map) res |> or_die "User.get" with
-    | Some row -> Some (get_from_row row)
-    | None -> None
+    let user_opt =
+      match DB.Res.fetch (module DB.Row.Map) res |> or_die "User.get" with
+      | Some row -> Some (get_from_row row)
+      | None -> None
+    in
+    DB.Stmt.close stmt |> ignore;
+    user_opt
 end
 
 let form_value dict key =
@@ -112,7 +122,26 @@ let sess_user_id req =
 let sess_set_user_id res ~user_id:user_id =
   Session.set res ~key:"user_id" ~data:user_id ()
 
-let register user_name passwd =
+let calc_digest salt password =
+  let open Nocrypto in
+  let hex_string_of_cstruct c =
+    let hexdump_pp fmt =
+      for i = 0 to Cstruct.len c - 1 do
+        Cstruct.get_char c i |> Char.code |> Format.fprintf fmt "%.2x"
+      done;
+      Format.pp_print_flush fmt ()
+    in
+    let b = Buffer.create (Cstruct.len c * 2) in
+    let f = Format.formatter_of_buffer b in
+    Format.fprintf f "%t" hexdump_pp;
+    Buffer.to_bytes b |> Bytes.unsafe_to_string
+  in
+  salt ^ password
+  |> Cstruct.of_string
+  |> Hash.SHA1.digest
+  |> hex_string_of_cstruct
+
+let register user_name password =
   let random_string n =
     let s =
       "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789" in
@@ -122,27 +151,8 @@ let register user_name passwd =
       |> String.unsafe_get s
     )
   in
-  let hex_string_of_cstruct c =
-    let hexdump_pp fmt t =
-      Format.pp_open_box fmt 0;
-      for i = 0 to Cstruct.len t - 1 do
-        Cstruct.get_char t i |> Char.code |> Format.fprintf fmt "%.2x"
-      done;
-      Format.pp_close_box fmt ()
-    in
-    let b = Buffer.create (Cstruct.len c * 2) in
-    let f = Format.formatter_of_buffer b in
-    Format.fprintf f "%a@." hexdump_pp c;
-    Buffer.to_bytes b |> Bytes.unsafe_to_string
-  in
-  let open Nocrypto in
   let salt = random_string 20 in
-  let digest =
-    salt ^ passwd
-    |> Cstruct.of_string
-    |> Hash.SHA1.digest
-    |> hex_string_of_cstruct
-  in
+  let digest = calc_digest salt password in
   print_endline (
     "Registering user\n" ^
     "user_name:" ^ user_name ^ ", "
@@ -233,16 +243,35 @@ let get_login = get "/login" begin fun _ ->
 end
 
 let post_login = post "/login" begin fun req ->
-  req
-  |> App.urlencoded_pairs_of_body
-  |> Lwt.map begin fun dict ->
-    let name = List.assoc "name" dict |> List.hd in
-    let passwd = List.assoc "password" dict |> List.hd in
-    print_endline begin
-      "name:" ^ name  ^ ", "
-      ^ "password_length;" ^ (String.length passwd |> string_of_int)
-    end;
-    failwith "Not implemented"
+  App.urlencoded_pairs_of_body req |> Lwt.map begin fun dict ->
+    match form_value dict "name", form_value dict "password" with
+    | name, password when name <> "" && password <> "" -> begin
+        print_endline (
+          "name:" ^ name  ^ ", "
+          ^ "password_length:" ^ (String.length password |> string_of_int) );
+        let query = "SELECT * FROM user WHERE name = ?" in
+        let params = [| `String name |] in
+        let stmt, res = DB.exec db query ~params () |> or_die "post_login" in
+        match DB.Res.fetch (module DB.Row.Map) res |> or_die "post_login" with
+        | Some row -> begin
+            let user = User.get_from_row row in
+            DB.Stmt.close stmt |> or_die "post_login";
+            match user.salt, user.password with
+            | Some salt, Some correct_digest ->
+              let digest = calc_digest salt password in
+              if digest <> correct_digest then
+                no_content |> respond ~code:`Forbidden
+              else
+                Uri.of_string "/" |> redirect
+            | _ -> assert false
+          end
+        | None ->
+          no_content |> respond ~code:`Forbidden
+      end
+    | _ ->
+      no_content |> respond ~code:`Bad_request
+    | exception _ ->
+      no_content |> respond ~code:`Bad_request
   end
 end
 
