@@ -6,8 +6,43 @@ let or_die where = function
   | Error (num, msg) ->
     Format.sprintf "%s (%d) %s" where num msg |> failwith
 
+module DB = struct
+  include Mariadb.Blocking
+
+  (* Just execute query *)
+  let just_exec dbh query =
+    match prepare dbh query with
+    | Ok stmt -> begin
+      match Stmt.execute stmt [||] with
+      | Ok _ -> Stmt.close stmt
+      | Error _ as err -> err
+      end
+    | Error _ as err -> err
+end
+
 let env var default =
   try Sys.getenv var with Not_found -> default
+
+let db =
+  let host = env "ISUBATA_DB_HOST" "127.0.0.1" in
+  let port = env "ISUBATA_DB_PORT" "3306" |> int_of_string in
+  let user = env "ISUBATA_DB_USER" "root" in
+  let pass = env "ISUBATA_DB_PASSWORD" "" in
+  let dsn =
+    let userinfo = user ^ (if pass = "" then "" else ":" ^ pass) in
+    Uri.make ~scheme:"tcp" ~host ~port ~userinfo () |> Uri.to_string
+  in
+  print_endline ("Connecting to " ^ dsn);
+  let dbh =
+    DB.connect ~host ~port ~user ~pass ~db:"isubata" () |> or_die "DB.connect"
+  in
+  DB.set_character_set dbh "utf8mb4" |> or_die "DB.set_character_set";
+  DB.just_exec dbh {|
+      SET SESSION
+        sql_mode='TRADITIONAL,NO_AUTO_VALUE_ON_ZERO,ONLY_FULL_GROUP_BY'
+    |} |> or_die "DB.just_exec";
+  print_endline "Succeeded to connect db.";
+  dbh
 
 let random_string n =
   let s = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789" in
@@ -91,15 +126,15 @@ end
 let post_register = post "/register" begin fun req ->
   App.urlencoded_pairs_of_body req
   |> Lwt.map begin fun dict ->
-      let name = List.hd (List.assoc "name" dict) in
-      let passwd = List.hd (List.assoc "password" dict) in
-      if String.length name = 0 || String.length passwd = 0 then
-        no_content |> respond ~code:`Bad_request
-      else begin
-        let user_id = register name passwd  in
-        redirect (Uri.of_string "/")
-        |> sess_set_user_id ~user_id
-      end
+    let name = List.hd (List.assoc "name" dict) in
+    let passwd = List.hd (List.assoc "password" dict) in
+    if String.length name = 0 || String.length passwd = 0 then
+      no_content |> respond ~code:`Bad_request
+    else begin
+      let user_id = register name passwd  in
+      redirect (Uri.of_string "/")
+      |> sess_set_user_id ~user_id
+    end
   end
 end
 
@@ -178,28 +213,35 @@ let () =
   Nocrypto_entropy_unix.initialize ();
   let public_dir = env "ISUBATA_PUBLIC_DIR" "../public" in
   let port = env "ISUBATA_APP_PORT" "3000" |> int_of_string in
-  print_endline ("port: " ^ (port |> string_of_int));
-  App.empty
-  |> App.cmd_name "ISUCON7-qualify-ocaml"
-  |> App.port port
-  |> middleware Cookie.m
-  |> middleware Middleware.trace
-  |> middleware (Middleware.static ~local_path:public_dir ~uri_prefix:"/" ())
-  |> get_initialize
-  |> get_index
-  |> get_register
-  |> post_register
-  |> get_login
-  |> post_login
-  |> get_logout
-  |> get_channel
-  |> get_message
-  |> post_message
-  |> fetch_unread
-  |> get_history
-  |> get_profile
-  |> post_profile
-  |> get_add_channel
-  |> post_add_channel
-  |> get_icon
-  |> App.run_command
+  print_endline ("expose port: " ^ (port |> string_of_int));
+  let app =
+    App.empty
+    |> App.cmd_name "ISUCON7-qualify-ocaml"
+    |> App.port port
+    |> middleware Cookie.m
+    |> middleware Middleware.trace
+    |> middleware (Middleware.static ~local_path:public_dir ~uri_prefix:"/" ())
+    |> get_initialize
+    |> get_index
+    |> get_register
+    |> post_register
+    |> get_login
+    |> post_login
+    |> get_logout
+    |> get_channel
+    |> get_message
+    |> post_message
+    |> fetch_unread
+    |> get_history
+    |> get_profile
+    |> post_profile
+    |> get_add_channel
+    |> post_add_channel
+    |> get_icon
+    |> App.run_command' in
+  match app with
+  | `Ok app ->
+    Lwt_main.at_exit (fun () -> DB.library_end () |> Lwt.return);
+    Lwt_main.run app
+  | `Error -> DB.library_end (); exit 1
+  | `Not_running -> exit 0

@@ -6,4 +6,5 @@
                nocrypto
                nocrypto.unix
                ezjsonm
+               mariadb
                opium))

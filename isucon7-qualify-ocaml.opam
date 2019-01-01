@@ -10,10 +10,11 @@ bug-reports: "https://github.com/tyabu12/isucon7-qualify-ocaml/issues"
 depends: [
   "ocaml" {>= "4.03.0"}
   "cstruct" {>= "3.2.1"}
+  "nocrypto" {>= "0.5.4"}
   "tyxml-ppx" {>= "4.3.0"}
   "ezjsonm" {>= "0.6.0"}
+  "mariadb" {>= "1.1.1"}
   "opium" {>= "0.16.0"}
-  "nocrypto" {>= "0.5.4"}
   "dune" {build}
 ]
 build: [
