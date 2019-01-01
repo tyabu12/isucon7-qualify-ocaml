@@ -139,7 +139,7 @@ let register user_name passwd =
     |> hex_string_of_cstruct
   in
   print_endline (
-    "Registering user\n"
+    "Registering user\n" ^
     "user_name:" ^ user_name ^ ", "
     ^ "salt:" ^ salt ^ ", "
     ^ "digest:" ^ digest);
