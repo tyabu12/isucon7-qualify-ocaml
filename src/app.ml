@@ -40,6 +40,11 @@ module DB = struct
     Stmt.close stmt |> or_die "last_insert_id";
     id
 
+  let row_find row key value_of_field =
+    match Row.StringMap.find_opt key row with
+    | Some field -> Some (value_of_field field)
+    | None -> None
+
 end
 
 module Time = DB.Time
@@ -78,12 +83,12 @@ module User = struct
   }
 
   let get_from_row row =
-    let find key = DB.Row.StringMap.find key row in
-    let id = find "id" |> DB.Field.int_opt in
-    let channel_id = find "channel_id" |> DB.Field.int_opt in
-    let user_id = find "user_id" |> DB.Field.int_opt in
-    let content = find "content" |> DB.Field.string_opt in
-    let created_at = find "created_at" |> DB.Field.time_opt in
+    let find key value_of_field = DB.row_find row key value_of_field in
+    let id = find "id" DB.Field.int in
+    let channel_id = find "channel_id" DB.Field.int in
+    let user_id = find "user_id" DB.Field.int in
+    let content = find "content" DB.Field.string in
+    let created_at = find "created_at" DB.Field.time in
     {id; channel_id; user_id; content; created_at}
 
   let get user_id =
