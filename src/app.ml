@@ -101,7 +101,15 @@ end
 
 (* routes *)
 
-let get_initialize = get "/initialize" get_mock
+let get_initialize = get "/initialize" begin fun _ ->
+  let db_just_exec query = DB.just_exec db query |> or_die "get_initialize" in
+  db_just_exec "DELETE FROM user WHERE id > 1000";
+  db_just_exec "DELETE FROM image WHERE id > 1001";
+  db_just_exec "DELETE FROM channel WHERE id > 10";
+  db_just_exec "DELETE FROM message WHERE id > 10000";
+  db_just_exec "DELETE FROM haveread";
+  no_content |> respond' ~code:`No_content
+end
 
 let get_index = get "/" begin fun req ->
   match sess_user_id req with
