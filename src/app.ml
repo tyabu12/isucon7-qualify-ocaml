@@ -1,59 +1,7 @@
 open Opium.Std
-
-(* TODO: output error_log file? *)
-let or_die where = function
-  | Ok res -> res
-  | Error (num, msg) ->
-    Format.sprintf "%s (%d) %s" where num msg |> failwith
-
-module DB = struct
-  include Mariadb.Blocking
-
-  (* val exec : t -> string -> ?params:Field.value array -> unit ->
-     (Stmt.t * Res.t, Mariadb.Blocking.error) result *)
-  let exec dbh query ?(params = [||]) () =
-    match prepare dbh query with
-    | Ok stmt -> begin
-        match Stmt.execute stmt params with
-        | Ok res -> Ok (stmt, res)
-        | Error _ as err -> Stmt.close stmt |> ignore; err
-      end
-    | Error _ as err -> err
-
-  (* Just execute query. return nothing *)
-  (* val just_exec : t -> string -> ?params:Field.value array -> unit
-     -> unit Mariadb.Blocking.result *)
-  let just_exec dbh query ?(params = [||]) () =
-    match exec dbh query ~params () with
-    | Ok (stmt, _) -> Stmt.close stmt
-    | Error _ as err -> err
-
-  let last_insert_id dbh () =
-    let query = "SELECT LAST_INSERT_ID()" in
-    let stmt, res = exec dbh query () |> or_die "last_insert_id" in
-    assert (Res.num_rows res = 1);
-    let id =
-      match Res.fetch (module Row.Array) res |> or_die "last_insert_id" with
-      | Some row -> row.(0) |> Field.int
-      | None -> assert false
-    in
-    Stmt.close stmt |> or_die "last_insert_id";
-    id
-
-  let row_find row key value_of_field =
-    match Row.StringMap.find_opt key row with
-    | Some field -> Some (value_of_field field)
-    | None -> None
-
-  (* hack: text type column cannot be applyed DB.Field.string *)
-  let string_of_text_field field = Field.bytes field |> Bytes.to_string
-
-end
-
-module Time = DB.Time
-
-let env var default =
-  try Sys.getenv var with Not_found -> default
+open Misc
+module DB = Mariadb.Blocking
+module M = Models
 
 let db =
   let host = env "ISUBATA_DB_HOST" "127.0.0.1" in
@@ -69,58 +17,12 @@ let db =
     DB.connect ~host ~port ~user ~pass ~db:"isubata" () |> or_die "DB.connect"
   in
   DB.set_character_set dbh "utf8mb4" |> or_die "DB.set_character_set";
-  DB.just_exec dbh {|
+  Db_helper.just_exec dbh {|
       SET SESSION
         sql_mode='TRADITIONAL,NO_AUTO_VALUE_ON_ZERO,ONLY_FULL_GROUP_BY'
     |} () |> or_die "DB.just_exec";
   print_endline "Succeeded to connect db.";
   dbh
-
-module User = struct
-  type t = {
-    id : int option;
-    name : string option;
-    salt : string option;
-    password : string option;
-    display_name : string option;
-    avatar_icon : string option;
-    created_at : Time.t option;
-  }
-
-  let get_from_row row =
-    let find key value_of_field = DB.row_find row key value_of_field in
-    let id = find "id" DB.Field.int in
-    let name = find "name" DB.Field.string in
-    let salt = find "salt" DB.Field.string in
-    let password = find "password" DB.Field.string in
-    let display_name = find "display_name" DB.string_of_text_field in
-    let avatar_icon = find "avatar_icon" DB.string_of_text_field in
-    let created_at = find "created_at" DB.Field.time in
-    {id; name; salt; password; display_name; avatar_icon; created_at}
-
-  let get user_id =
-    let stmt =
-      DB.prepare db "SELECT * FROM user WHERE id = ?" |> or_die "User.get" in
-    let res = DB.Stmt.execute stmt [| `Int user_id |] |> or_die "User.get" in
-    assert (DB.Res.num_rows res = 1);
-    let user_opt =
-      match DB.Res.fetch (module DB.Row.Map) res |> or_die "User.get" with
-      | Some row -> Some (get_from_row row)
-      | None -> None
-    in
-    DB.Stmt.close stmt |> ignore;
-    user_opt
-end
-
-let dump_dict dict =
-  List.iter begin fun (k, v) ->
-    print_string (k ^ ":");
-    List.iter (fun s -> print_string s) v;
-    print_newline ()
-  end dict
-
-let form_value dict key =
-  List.assoc key dict |> List.hd
 
 let sess_user_id req =
   match  Session.get req ~key:"user_id" with
@@ -180,9 +82,9 @@ let register user_name password =
     let avatar_icon = `String "default.png" in
     [| user_name; salt; digest; display_name; avatar_icon |]
   in
-  DB.just_exec db query ~params () |> or_die "register";
+  Db_helper.just_exec db query ~params () |> or_die "register";
   print_endline "Succeeded to registering user.";
-  DB.last_insert_id db ()
+  Db_helper.last_insert_id db
 
 let no_content = `String ""
 
@@ -209,7 +111,7 @@ end
 
 let get_initialize = get "/initialize" begin fun _ ->
   let db_just_exec query =
-    DB.just_exec db query () |> or_die "get_initialize"
+    Db_helper.just_exec db query () |> or_die "get_initialize"
   in
   db_just_exec "DELETE FROM user WHERE id > 1000";
   db_just_exec "DELETE FROM image WHERE id > 1001";
@@ -241,20 +143,19 @@ end
 
 let post_register = post "/register" begin fun req ->
   App.urlencoded_pairs_of_body req |> Lwt.map begin fun dict ->
-    dump_dict dict;
     match form_value dict "name", form_value dict "password" with
     | name, password when name <> "" && password <> "" -> begin
-      print_endline (
-        "POST /register\n"
-        ^ "name:" ^ name  ^ ", "
-        (* ^ "password_length:" ^ (String.length password |> string_of_int) ); *)
-        ^ "password:" ^ password);
-      assert (String.length name > 0);
-      assert (String.length password > 0);
-      let user_id = register name password in
-      Uri.of_string "/" |> redirect ~code:`See_other
-      |> sess_set_user_id ~user_id
-    end
+        print_endline (
+          "POST /register\n"
+          ^ "name:" ^ name  ^ ", "
+          (* ^ "password_length:" ^ (String.length password |> string_of_int) ); *)
+          ^ "password:" ^ password);
+        assert (String.length name > 0);
+        assert (String.length password > 0);
+        let user_id = register name password in
+        Uri.of_string "/" |> redirect ~code:`See_other
+        |> sess_set_user_id ~user_id
+      end
     | _ ->
       no_content |> respond ~code:`Bad_request
     | exception _ ->
@@ -278,10 +179,11 @@ let post_login = post "/login" begin fun req ->
         assert (String.length password > 0);
         let query = "SELECT * FROM user WHERE name = ?" in
         let params = [| `String name |] in
-        let stmt, res = DB.exec db query ~params () |> or_die "post_login" in
+        let stmt, res =
+          Db_helper.exec db query ~params () |> or_die "post_login" in
         match DB.Res.fetch (module DB.Row.Map) res |> or_die "post_login" with
         | Some row -> begin
-            let user = User.get_from_row row in
+            let user = M.User.get_from_row row in
             DB.Stmt.close stmt |> or_die "post_login";
             match user.id, user.salt, user.password with
             | Some user_id, Some salt, Some correct_digest ->

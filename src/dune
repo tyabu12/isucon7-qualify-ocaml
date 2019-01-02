@@ -1,7 +1,9 @@
 (executable
   (name        app)
   (public_name isucon7-qualify-ocaml)
-  (libraries   views
+  (libraries   common
+               models
+               views
                cstruct
                nocrypto
                nocrypto.unix
