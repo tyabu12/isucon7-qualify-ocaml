@@ -111,6 +111,13 @@ module User = struct
     user_opt
 end
 
+let dump_dict dict =
+  List.iter begin fun (k, v) ->
+    print_string (k ^ ":");
+    List.iter (fun s -> print_string s) v;
+    print_newline ()
+  end dict
+
 let form_value dict key =
   List.assoc key dict |> List.hd
 
@@ -119,7 +126,8 @@ let sess_user_id req =
   | Some user_id when user_id <> "0" -> Some (int_of_string user_id)
   | _ -> None
 
-let sess_set_user_id res ~user_id:user_id =
+let sess_set_user_id res ~user_id =
+  let user_id = string_of_int user_id in
   Session.set res ~key:"user_id" ~data:user_id ()
 
 let calc_digest salt password =
@@ -177,7 +185,14 @@ let register user_name password =
 
 let no_content = `String ""
 
-let redirect_to_login () = "/login" |> Uri.of_string |> redirect'
+(* overwrite opium *)
+let redirect ?headers ?(code=`Found) uri =
+  let headers = Cohttp.Header.add_opt headers "Location" (Uri.to_string uri) in
+  Response.create ~headers ~code ()
+
+(* overwrite opium *)
+let redirect' ?headers ?(code=`Found) uri =
+  uri |> redirect ?headers ~code |> Lwt.return
 
 let get_mock req = begin
   ignore req;
@@ -206,14 +221,14 @@ end
 let get_index = get "/" begin fun req ->
   match sess_user_id req with
   | None -> `Html Views.Index.html |> respond'
-  | Some _ -> "/channel/1" |> Uri.of_string |> redirect'
+  | Some _ -> "/channel/1" |> Uri.of_string |> redirect' ~code:`See_other
 end
 
 let get_channel = get "/channel/:channel_id" begin fun req ->
   let user_id = sess_user_id req in
   let channel_id = "channel_id" |> param req in
   match user_id, channel_id with
-  | None, _ -> redirect_to_login ()
+  | None, _ -> Uri.of_string "/login" |> redirect' ~code:`See_other
   | Some _, channel_id ->
     let desc = "TODO: チャンネルID(" ^ channel_id ^ ") の説明" in
     `Html (Views.Channel.html false desc) |> respond'
@@ -224,17 +239,25 @@ let get_register = get "/register" begin fun _ ->
 end
 
 let post_register = post "/register" begin fun req ->
-  App.urlencoded_pairs_of_body req
-  |> Lwt.map begin fun dict ->
-    let name = List.hd (List.assoc "name" dict) in
-    let passwd = List.hd (List.assoc "password" dict) in
-    if String.length name = 0 || String.length passwd = 0 then
-      no_content |> respond ~code:`Bad_request
-    else begin
-      let user_id = register name passwd in
-      redirect (Uri.of_string "/")
-      |> sess_set_user_id ~user_id:(string_of_int user_id)
+  App.urlencoded_pairs_of_body req |> Lwt.map begin fun dict ->
+    dump_dict dict;
+    match form_value dict "name", form_value dict "password" with
+    | name, password when name <> "" && password <> "" -> begin
+      print_endline (
+        "POST /register\n"
+        ^ "name:" ^ name  ^ ", "
+        (* ^ "password_length:" ^ (String.length password |> string_of_int) ); *)
+        ^ "password:" ^ password);
+      assert (String.length name > 0);
+      assert (String.length password > 0);
+      let user_id = register name password in
+      Uri.of_string "/" |> redirect ~code:`See_other
+      |> sess_set_user_id ~user_id
     end
+    | _ ->
+      no_content |> respond ~code:`Bad_request
+    | exception _ ->
+      no_content |> respond ~code:`Bad_request
   end
 end
 
@@ -247,8 +270,11 @@ let post_login = post "/login" begin fun req ->
     match form_value dict "name", form_value dict "password" with
     | name, password when name <> "" && password <> "" -> begin
         print_endline (
-          "name:" ^ name  ^ ", "
+          "POST /login\n"
+          ^ "name:" ^ name  ^ ", "
           ^ "password_length:" ^ (String.length password |> string_of_int) );
+        assert (String.length name > 0);
+        assert (String.length password > 0);
         let query = "SELECT * FROM user WHERE name = ?" in
         let params = [| `String name |] in
         let stmt, res = DB.exec db query ~params () |> or_die "post_login" in
@@ -256,13 +282,14 @@ let post_login = post "/login" begin fun req ->
         | Some row -> begin
             let user = User.get_from_row row in
             DB.Stmt.close stmt |> or_die "post_login";
-            match user.salt, user.password with
-            | Some salt, Some correct_digest ->
+            match user.id, user.salt, user.password with
+            | Some user_id, Some salt, Some correct_digest ->
               let digest = calc_digest salt password in
               if digest <> correct_digest then
                 no_content |> respond ~code:`Forbidden
               else
-                Uri.of_string "/" |> redirect
+                Uri.of_string "/" |> redirect ~code:`See_other
+                |> sess_set_user_id ~user_id
             | _ -> assert false
           end
         | None ->
@@ -276,7 +303,7 @@ let post_login = post "/login" begin fun req ->
 end
 
 let get_logout = get "/logout" begin fun _ ->
-  redirect (Uri.of_string "/")
+  redirect ~code:`See_other (Uri.of_string "/")
   |> Session.delete ~key:"user_id"
   |> Lwt.return
 end
