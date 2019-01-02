@@ -45,6 +45,9 @@ module DB = struct
     | Some field -> Some (value_of_field field)
     | None -> None
 
+  (* hack: text type column cannot be applyed DB.Field.string *)
+  let string_of_text_field field = Field.bytes field |> Bytes.to_string
+
 end
 
 module Time = DB.Time
@@ -90,10 +93,8 @@ module User = struct
     let name = find "name" DB.Field.string in
     let salt = find "salt" DB.Field.string in
     let password = find "password" DB.Field.string in
-    (* let display_name = find "display_name" DB.Field.string in *)
-    let display_name = None in
-    (* let avatar_icon = find "avatar_icon" DB.Field.string in *)
-    let avatar_icon = None in
+    let display_name = find "display_name" DB.string_of_text_field in
+    let avatar_icon = find "avatar_icon" DB.string_of_text_field in
     let created_at = find "created_at" DB.Field.time in
     {id; name; salt; password; display_name; avatar_icon; created_at}
 
