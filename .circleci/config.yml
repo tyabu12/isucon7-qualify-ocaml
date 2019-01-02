@@ -3,7 +3,7 @@ version: 2
 aliases:
   - &default_env
     environment:
-      CACHE_KEY: 7
+      CACHE_KEY: 8
   - &create_cache_key_file
     run:
       name: Create cache control key file
@@ -27,6 +27,15 @@ aliases:
           docker load -i ~/docker-images.tar.gz
         fi
         docker images
+  - &restore_initial_db_cache
+    restore_cache:
+      keys:
+        - initial-db-cache
+  - &save_initial_db_cache
+    save_cache:
+      key: initial-db-cache
+      paths:
+        - ~/isucon7q-initial-dataset.sql.gz
   - &set_up_docker_env
     run:
       name: Set up docker env
@@ -46,9 +55,18 @@ jobs:
           name: Build docker image
           command: docker-compose build
       - run:
-          name: Dump docker image files.
+          name: Dump docker image files
           command: docker images --filter "dangling=false" --format "{{.Repository}}" | xargs docker save | gzip > ~/docker-images.tar.gz
       - *save_docker_cache
+      - *restore_initial_db_cache
+      - run:
+          name: Generate initial DB data
+          command: |
+            if [ ! -f ~/isucon7q-initial-dataset.sql.gz ]; then
+              make gen-initial-dataset
+              mv ./db/isucon7q-initial-dataset.sql.gz ~/
+            fi
+      - *save_initial_db_cache
 
   test:
     <<: *default_env
@@ -59,6 +77,10 @@ jobs:
       - *restore_docker_cache
       - *load_docker_cache
       - *set_up_docker_env
+      - *restore_initial_db_cache
+      - run:
+          name: Link initial DB cache
+          command: ln -s $HOME/isucon7q-initial-dataset.sql.gz ./db/
       - run:
           name: Run bench
           command: >
