@@ -10,4 +10,6 @@ make rebuild
 # Wait for db
 dockerize \
   -wait tcp://${ISUBATA_DB_HOST}:${ISUBATA_DB_PORT} \
+  -wait-retry-interval 5s \
+  -timeout 2m \
   "$@"

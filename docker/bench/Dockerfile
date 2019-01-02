@@ -12,7 +12,6 @@ RUN set -eux; \
   rm -rf isucon7-qualify; \
   gb vendor restore; \
   make; \
-  ./bin/gen-initial-dataset; \
   : "Install dockerize"; \
   curl -sSL https://github.com/jwilder/dockerize/releases/download/$DOCKERIZE_VERSION/dockerize-linux-amd64-$DOCKERIZE_VERSION.tar.gz \
     | tar xz -C /usr/local/bin; \

@@ -3,3 +3,5 @@ _build/
 .merlin
 
 .env
+
+/db/isucon7q-initial-dataset.sql.gz
