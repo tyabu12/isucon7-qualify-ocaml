@@ -37,7 +37,7 @@ let ensure_login req =
   match sess_user_id req with
   | None -> failwith "ensure_login" (* FIXME? *)
   | Some user_id ->
-    match M.User.find db user_id with
+    match M.User.find_by_id db user_id with
     | Some user -> user
     | None ->
       (* TODO: Session.delete ~key:"user_id" *)
@@ -99,7 +99,7 @@ let get_channel = get "/channel/:channel_id" begin fun req ->
     match channel.description with
     | None -> assert false
     | Some desc ->
-      let user = M.User.find db user_id in
+      let user = M.User.find_by_id db user_id in
       `Html (Views.Channel.html ~channels ~user desc) |> respond'
 end
 
@@ -210,7 +210,22 @@ let fetch_unread = get "/fetch" get_mock
 
 let get_history = get "/history" get_mock
 
-let get_profile = get "/profile/:user_name" get_mock
+let get_profile = get "/profile/:user_name" begin fun req ->
+  let user_name = param req "user_name" in
+  print_endline ("GET /profile/" ^ user_name);
+  let self = ensure_login req in
+  let channels = M.Channel.all db in
+  match M.User.find_by_name db user_name with
+  | None -> no_content |> respond' ~code:`Not_found
+  | Some other ->
+    `Html (Views.Profile.html
+      ~channel_id:0
+      ~channels
+      ~user:self
+      ~other
+      ~self_profile:(self.id = other.id))
+    |> respond'
+end
 
 let get_add_channel = get "/add_channel" begin fun req ->
   print_endline "GET /add_channel";

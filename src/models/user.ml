@@ -22,11 +22,11 @@ let get_from_row row =
   let created_at = find "created_at" DB.Field.time in
   {id; name; salt; password; display_name; avatar_icon; created_at}
 
-let find db user_id =
-  let or_die res = or_die "User.get" res in
-  let stmt = DB.prepare db "SELECT * FROM user WHERE id = ?" |> or_die in
-  let res = DB.Stmt.execute stmt [| `Int user_id |] |> or_die in
-  assert (DB.Res.num_rows res = 1);
+let find db ?(params = [||]) query =
+  let or_die res = or_die "User.find" res in
+  let stmt = DB.prepare db query |> or_die in
+  let res = DB.Stmt.execute stmt params |> or_die in
+  (* assert (DB.Res.num_rows res = 1); *)
   let user_opt =
     match DB.Res.fetch (module DB.Row.Map) res |> or_die with
     | Some row -> Some (get_from_row row)
@@ -34,6 +34,16 @@ let find db user_id =
   in
   DB.Stmt.close stmt |> ignore;
   user_opt
+
+let find_by_id db id =
+  let query = "SELECT * FROM user WHERE id = ?" in
+  let params = [| `Int id |] in
+  find db ~params query
+
+let find_by_name db name =
+  let query = "SELECT * FROM user WHERE name = ?" in
+  let params = [| `String name |] in
+  find db ~params query
 
 let register db name password =
   let salt = random_string 20 in
