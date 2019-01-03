@@ -40,31 +40,37 @@ let ensure_login req =
 
 let no_content = `String ""
 
-(* overwrite opium *)
+(* HACK: Opium.Std.get wrapper to change HTTP status code *)
 let redirect ?headers ?(code=`Found) uri =
   let headers = Cohttp.Header.add_opt headers "Location" (Uri.to_string uri) in
   Response.create ~headers ~code ()
 
-(* overwrite opium *)
+(* HACK: Opium.Std.get wrapper to change HTTP status code *)
 let redirect' ?headers ?(code=`Found) uri =
   uri |> redirect ?headers ~code |> Lwt.return
 
+(* HACK: Opium.Std.get wrapper to print access log *)
+let get url handler =
+  Opium.Std.get url begin fun req ->
+    print_endline ("GET " ^ url);
+    handler req
+  end
+
+(* HACK: Opium.Std.get wrapper to print access log *)
+let post url handler =
+  Opium.Std.post url begin fun req ->
+    print_endline ("POST " ^ url);
+    handler req
+  end
+
 let redirect_to_login = Uri.of_string "/login" |> redirect ~code:`See_other
 
-let get_mock req = begin
-  ignore req;
-  failwith "Not implemented"
-end
-
-let post_mock dict = begin
-  ignore dict;
-  failwith "Not implemented"
-end
+let get_mock req = begin ignore req; failwith "Not implemented" end
+let post_mock dict = begin ignore dict; failwith "Not implemented" end
 
 (* routes *)
 
 let get_initialize = get "/initialize" begin fun _ ->
-  print_endline "GET /initialize";
   let db_just_exec query =
     Db_helper.just_exec db query () |> or_die "get_initialize"
   in
@@ -77,7 +83,6 @@ let get_initialize = get "/initialize" begin fun _ ->
 end
 
 let get_index = get "/" begin fun req ->
-  print_endline "GET /";
   match sess_user_id req with
   | None -> `Html Views.Index.html |> respond'
   | Some _ -> Uri.of_string "/channel/1" |> redirect' ~code:`See_other
@@ -85,7 +90,7 @@ end
 
 let get_channel = get "/channel/:channel_id" begin fun req ->
   let channel_id = "channel_id" |> param req in
-  print_endline ("GET /channel/" ^ channel_id);
+  print_endline ("channlel_id: " ^ channel_id);
   match ensure_login req with
   | None -> redirect_to_login |> Lwt.return
   | Some user ->
@@ -99,12 +104,10 @@ let get_channel = get "/channel/:channel_id" begin fun req ->
 end
 
 let get_register = get "/register" begin fun _ ->
-  print_endline "GET /register";
   `Html Views.Register.html |> respond'
 end
 
 let post_register = post "/register" begin fun req ->
-  print_endline "POST /register";
   App.urlencoded_pairs_of_body req |> Lwt.map begin fun dict ->
     match form_value dict "name", form_value dict "password" with
     | name, password when name <> "" && password <> "" -> begin
@@ -125,12 +128,10 @@ let post_register = post "/register" begin fun req ->
 end
 
 let get_login = get "/login" begin fun _ ->
-  print_endline "GET /login";
   `Html Views.Login.html |> respond'
 end
 
 let post_login = post "/login" begin fun req ->
-  print_endline "POST /login";
   App.urlencoded_pairs_of_body req |> Lwt.map begin fun dict ->
     match form_value dict "name", form_value dict "password" with
     | name, password when name <> "" && password <> "" -> begin
@@ -169,14 +170,12 @@ let post_login = post "/login" begin fun req ->
 end
 
 let get_logout = get "/logout" begin fun _ ->
-  print_endline "GET /logout";
   redirect ~code:`See_other (Uri.of_string "/")
   |> Session.delete ~key:"user_id"
   |> Lwt.return
 end
 
 let post_message = post "/message" begin fun req ->
-  print_endline "POST /message";
   App.urlencoded_pairs_of_body req |> Lwt.map begin fun dict ->
     match ensure_login req with
     | None -> redirect_to_login
@@ -209,7 +208,7 @@ let get_history = get "/history" get_mock
 
 let get_profile = get "/profile/:user_name" begin fun req ->
   let user_name = param req "user_name" in
-  print_endline ("GET /profile/" ^ user_name);
+  print_endline ("user_name: " ^ user_name);
   match ensure_login req with
   | None -> redirect_to_login |> Lwt.return
   | Some self ->
@@ -227,7 +226,6 @@ let get_profile = get "/profile/:user_name" begin fun req ->
 end
 
 let get_add_channel = get "/add_channel" begin fun req ->
-  print_endline "GET /add_channel";
   match ensure_login req with
   | None -> redirect_to_login |> Lwt.return
   | Some user ->
@@ -236,7 +234,6 @@ let get_add_channel = get "/add_channel" begin fun req ->
 end
 
 let post_add_channel = post "/add_channel" begin fun req ->
-  print_endline "POST /add_channel";
   match ensure_login req with
   | None -> redirect_to_login |> Lwt.return
   | Some _ -> App.urlencoded_pairs_of_body req |> Lwt.map begin fun dict ->
@@ -254,7 +251,6 @@ let post_add_channel = post "/add_channel" begin fun req ->
 end
 
 let post_profile = post "/profile" begin fun req ->
-  print_endline "POST /profile";
   App.urlencoded_pairs_of_body req |> Lwt.map begin fun dict ->
     post_mock dict
   end
