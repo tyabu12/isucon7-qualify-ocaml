@@ -1,6 +1,6 @@
 open Opium.Std
 open Misc
-module DB = Mariadb.Blocking
+module DB = Db_helper.DB
 module M = Models
 
 let db =
@@ -33,58 +33,15 @@ let sess_set_user_id res ~user_id =
   let user_id = string_of_int user_id in
   Session.set res ~key:"user_id" ~data:user_id ()
 
-let calc_digest salt password =
-  let open Nocrypto in
-  let hex_string_of_cstruct c =
-    let hexdump_pp fmt =
-      for i = 0 to Cstruct.len c - 1 do
-        Cstruct.get_char c i |> Char.code |> Format.fprintf fmt "%.2x"
-      done;
-      Format.pp_print_flush fmt ()
-    in
-    let b = Buffer.create (Cstruct.len c * 2) in
-    let f = Format.formatter_of_buffer b in
-    Format.fprintf f "%t" hexdump_pp;
-    Buffer.to_bytes b |> Bytes.unsafe_to_string
-  in
-  salt ^ password
-  |> Cstruct.of_string
-  |> Hash.SHA1.digest
-  |> hex_string_of_cstruct
-
-let register user_name password =
-  let random_string n =
-    let s =
-      "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789" in
-    let len = String.length s in
-    String.init n (fun _ ->
-      Random.int len
-      |> String.unsafe_get s
-    )
-  in
-  let salt = random_string 20 in
-  let digest = calc_digest salt password in
-  print_endline (
-    "Registering user\n" ^
-    "user_name:" ^ user_name ^ ", "
-    ^ "salt:" ^ salt ^ ", "
-    ^ "digest:" ^ digest);
-  let query = {|
-    INSERT INTO user
-      (name, salt, password, display_name, avatar_icon, created_at)
-    VALUES (?, ?, ?, ?, ?, NOW())
-  |} in
-  let params =
-    let user_name = `String user_name in
-    let salt = `String salt in
-    let digest = `String digest in
-    let display_name = user_name in
-    let avatar_icon = `String "default.png" in
-    [| user_name; salt; digest; display_name; avatar_icon |]
-  in
-  Db_helper.just_exec db query ~params () |> or_die "register";
-  print_endline "Succeeded to registering user.";
-  Db_helper.last_insert_id db
+let ensure_login req =
+  match sess_user_id req with
+  | None -> failwith "ensure_login" (* FIXME? *)
+  | Some user_id ->
+    match M.User.find db user_id with
+    | Some user -> user
+    | None ->
+      (* TODO: Session.delete ~key:"user_id" *)
+      failwith "ensure_login"
 
 let no_content = `String ""
 
@@ -110,6 +67,7 @@ end
 (* routes *)
 
 let get_initialize = get "/initialize" begin fun _ ->
+  print_endline "GET /initialize";
   let db_just_exec query =
     Db_helper.just_exec db query () |> or_die "get_initialize"
   in
@@ -122,37 +80,45 @@ let get_initialize = get "/initialize" begin fun _ ->
 end
 
 let get_index = get "/" begin fun req ->
+  print_endline "GET /";
   match sess_user_id req with
   | None -> `Html Views.Index.html |> respond'
-  | Some _ -> "/channel/1" |> Uri.of_string |> redirect' ~code:`See_other
+  | Some _ -> Uri.of_string "/channel/1" |> redirect' ~code:`See_other
 end
 
 let get_channel = get "/channel/:channel_id" begin fun req ->
-  let user_id = sess_user_id req in
   let channel_id = "channel_id" |> param req in
-  match user_id, channel_id with
+  print_endline ("GET /channel/" ^ channel_id);
+  let user_id = sess_user_id req in
+  match user_id, channel_id |> int_of_string with
   | None, _ -> Uri.of_string "/login" |> redirect' ~code:`See_other
-  | Some _, channel_id ->
-    let desc = "TODO: チャンネルID(" ^ channel_id ^ ") の説明" in
-    `Html (Views.Channel.html false desc) |> respond'
+  | Some user_id, channel_id ->
+    let channels = M.Channel.all db in
+    let channel =
+      array_find_first channels (fun ch -> ch.id = Some channel_id) in
+    match channel.description with
+    | None -> assert false
+    | Some desc ->
+      let user = M.User.find db user_id in
+      `Html (Views.Channel.html ~channels ~user desc) |> respond'
 end
 
 let get_register = get "/register" begin fun _ ->
+  print_endline "GET /register";
   `Html Views.Register.html |> respond'
 end
 
 let post_register = post "/register" begin fun req ->
+  print_endline "POST /register";
   App.urlencoded_pairs_of_body req |> Lwt.map begin fun dict ->
     match form_value dict "name", form_value dict "password" with
     | name, password when name <> "" && password <> "" -> begin
         print_endline (
-          "POST /register\n"
-          ^ "name:" ^ name  ^ ", "
-          (* ^ "password_length:" ^ (String.length password |> string_of_int) ); *)
-          ^ "password:" ^ password);
+          "name:" ^ name  ^ ", " ^
+          "password_length:" ^ (String.length password |> string_of_int) );
         assert (String.length name > 0);
         assert (String.length password > 0);
-        let user_id = register name password in
+        let user_id = M.User.register db name password in
         Uri.of_string "/" |> redirect ~code:`See_other
         |> sess_set_user_id ~user_id
       end
@@ -164,17 +130,18 @@ let post_register = post "/register" begin fun req ->
 end
 
 let get_login = get "/login" begin fun _ ->
+  print_endline "GET /login";
   `Html Views.Login.html |> respond'
 end
 
 let post_login = post "/login" begin fun req ->
+  print_endline "POST /login";
   App.urlencoded_pairs_of_body req |> Lwt.map begin fun dict ->
     match form_value dict "name", form_value dict "password" with
     | name, password when name <> "" && password <> "" -> begin
         print_endline (
-          "POST /login\n"
-          ^ "name:" ^ name  ^ ", "
-          ^ "password_length:" ^ (String.length password |> string_of_int) );
+          "name:" ^ name  ^ ", " ^
+          "password_length:" ^ (String.length password |> string_of_int) );
         assert (String.length name > 0);
         assert (String.length password > 0);
         let query = "SELECT * FROM user WHERE name = ?" in
@@ -196,6 +163,7 @@ let post_login = post "/login" begin fun req ->
             | _ -> assert false
           end
         | None ->
+          DB.Stmt.close stmt |> or_die "post_login";
           no_content |> respond ~code:`Forbidden
       end
     | _ ->
@@ -206,26 +174,29 @@ let post_login = post "/login" begin fun req ->
 end
 
 let get_logout = get "/logout" begin fun _ ->
+  print_endline "GET /logout";
   redirect ~code:`See_other (Uri.of_string "/")
   |> Session.delete ~key:"user_id"
   |> Lwt.return
 end
 
 let post_message = post "/message" begin fun req ->
+  print_endline "POST /message";
   App.urlencoded_pairs_of_body req |> Lwt.map begin fun dict ->
-    let user_id =
-      match sess_user_id req with
-      | Some user_id -> user_id
-      | None -> failwith "post_message" (* FIXME? *)
-    in
+    let user = ensure_login req in
     match form_value dict "message", form_value dict "channel_id" with
     | exception _ ->
       no_content |> respond ~code:`Forbidden
     | message, channel_id when message = "" || channel_id = "" ->
       no_content |> respond ~code:`Forbidden
     | message, channel_id ->
+      print_endline "POST /message";
       print_endline begin
-        "user_id:" ^ string_of_int user_id  ^ ", "
+        "user_id:" ^ (
+          match user.id with
+          | Some id -> string_of_int id
+          | None -> "Unknown"
+        ) ^ ", "
         ^ "message:" ^ message ^ ", "
         ^ "channel_id:" ^ channel_id
       end;
@@ -239,17 +210,34 @@ let fetch_unread = get "/fetch" get_mock
 
 let get_history = get "/history" get_mock
 
-let get_profile = get "/profile" get_mock
+let get_profile = get "/profile/:user_name" get_mock
 
-let get_add_channel = get "/add_channel" get_mock
+let get_add_channel = get "/add_channel" begin fun req ->
+  print_endline "GET /add_channel";
+  let user = ensure_login req in
+  let channels = M.Channel.all db in
+  `Html (Views.Add_channel.html ~channels ~user) |> respond'
+end
 
 let post_add_channel = post "/add_channel" begin fun req ->
+  print_endline "POST /add_channel";
   App.urlencoded_pairs_of_body req |> Lwt.map begin fun dict ->
-    post_mock dict
+    match form_value dict "name", form_value dict "description" with
+    | exception _ ->
+      no_content |> respond ~code:`Bad_request
+    | name, desc when name = "" || desc = "" ->
+      no_content |> respond ~code:`Bad_request
+    | name, desc ->
+      ensure_login req |> ignore;
+      let last_id = M.Channel.insert db name desc in
+      Printf.sprintf "/channel/%d" last_id
+      |> Uri.of_string
+      |> redirect ~code:`See_other
   end
 end
 
 let post_profile = post "/profile" begin fun req ->
+  print_endline "POST /profile";
   App.urlencoded_pairs_of_body req |> Lwt.map begin fun dict ->
     post_mock dict
   end
@@ -257,7 +245,7 @@ end
 
 let get_icon = get "/icon/:filename" get_mock
 
-let () =
+let main () =
   Random.self_init ();
   Nocrypto_entropy_unix.initialize ();
   let public_dir = env "ISUBATA_PUBLIC_DIR" "../public" in
@@ -294,3 +282,5 @@ let () =
     Lwt_main.run app
   | `Error -> DB.library_end (); exit 1
   | `Not_running -> exit 0
+
+let () = main ()

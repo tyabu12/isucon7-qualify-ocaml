@@ -1,5 +1,5 @@
 open Misc
-module DB = Mariadb.Blocking
+module DB = Db_helper.DB
 
 type t = {
   id : int option;
@@ -22,7 +22,7 @@ let get_from_row row =
   let created_at = find "created_at" DB.Field.time in
   {id; name; salt; password; display_name; avatar_icon; created_at}
 
-let get db user_id =
+let find db user_id =
   let or_die res = or_die "User.get" res in
   let stmt = DB.prepare db "SELECT * FROM user WHERE id = ?" |> or_die in
   let res = DB.Stmt.execute stmt [| `Int user_id |] |> or_die in
@@ -34,3 +34,29 @@ let get db user_id =
   in
   DB.Stmt.close stmt |> ignore;
   user_opt
+
+let register db name password =
+  let salt = random_string 20 in
+  let digest = calc_digest salt password in
+  print_endline (
+    "Registering user\n" ^
+    "user_name:" ^ name ^ ", "
+    ^ "salt:" ^ salt ^ ", "
+    ^ "digest:" ^ digest);
+  let query = {|
+    INSERT INTO user
+      (name, salt, password, display_name, avatar_icon, created_at)
+    VALUES
+      (?, ?, ?, ?, ?, NOW())
+  |} in
+  let params =
+    let name = `String name in
+    let salt = `String salt in
+    let digest = `String digest in
+    let display_name = name in
+    let avatar_icon = `String "default.png" in
+    [| name; salt; digest; display_name; avatar_icon |]
+  in
+  Db_helper.just_exec db query ~params () |> or_die "register";
+  print_endline "Succeeded to registering user.";
+  Db_helper.last_insert_id db

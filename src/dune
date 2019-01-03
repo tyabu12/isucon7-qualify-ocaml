@@ -4,9 +4,5 @@
   (libraries   common
                models
                views
-               cstruct
-               nocrypto
                nocrypto.unix
-               ezjsonm
-               mariadb
                opium))

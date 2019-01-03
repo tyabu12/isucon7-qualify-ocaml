@@ -1,6 +1,6 @@
 let html =
   let open Tyxml in
-  let%html content = {|
+  [[%html {|
 <form action="/register" method="post">
 <div class="form-group row">
   <label for="inputname" class="col-sm-2 col-form-label">ユーザ名</label>
@@ -16,5 +16,4 @@ let html =
 </div>
 <button type="submit" class="btn btn-primary">登録</button>
 </form>
-  |} in
-  Layout.html [content]
+  |}]] |> Layout.html
