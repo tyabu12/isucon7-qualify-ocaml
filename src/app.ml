@@ -35,13 +35,8 @@ let sess_set_user_id res ~user_id =
 
 let ensure_login req =
   match sess_user_id req with
-  | None -> failwith "ensure_login" (* FIXME? *)
-  | Some user_id ->
-    match M.User.find_by_id db user_id with
-    | Some user -> user
-    | None ->
-      (* TODO: Session.delete ~key:"user_id" *)
-      failwith "ensure_login"
+  | Some user_id -> M.User.find_by_id db user_id
+  | None -> None
 
 let no_content = `String ""
 
@@ -53,6 +48,8 @@ let redirect ?headers ?(code=`Found) uri =
 (* overwrite opium *)
 let redirect' ?headers ?(code=`Found) uri =
   uri |> redirect ?headers ~code |> Lwt.return
+
+let redirect_to_login = Uri.of_string "/login" |> redirect ~code:`See_other
 
 let get_mock req = begin
   ignore req;
@@ -89,18 +86,16 @@ end
 let get_channel = get "/channel/:channel_id" begin fun req ->
   let channel_id = "channel_id" |> param req in
   print_endline ("GET /channel/" ^ channel_id);
-  let user_id = sess_user_id req in
-  match user_id, channel_id |> int_of_string with
-  | None, _ -> Uri.of_string "/login" |> redirect' ~code:`See_other
-  | Some user_id, channel_id ->
+  match ensure_login req with
+  | None -> redirect_to_login |> Lwt.return
+  | Some user ->
+    let channel_id = int_of_string channel_id in
     let channels = M.Channel.all db in
     let channel =
       array_find_first channels (fun ch -> ch.id = Some channel_id) in
     match channel.description with
     | None -> assert false
-    | Some desc ->
-      let user = M.User.find_by_id db user_id in
-      `Html (Views.Channel.html ~channels ~user desc) |> respond'
+    | Some desc -> `Html (Views.Channel.html ~channels ~user desc) |> respond'
 end
 
 let get_register = get "/register" begin fun _ ->
@@ -183,24 +178,26 @@ end
 let post_message = post "/message" begin fun req ->
   print_endline "POST /message";
   App.urlencoded_pairs_of_body req |> Lwt.map begin fun dict ->
-    let user = ensure_login req in
-    match form_value dict "message", form_value dict "channel_id" with
-    | exception _ ->
-      no_content |> respond ~code:`Forbidden
-    | message, channel_id when message = "" || channel_id = "" ->
-      no_content |> respond ~code:`Forbidden
-    | message, channel_id ->
-      print_endline "POST /message";
-      print_endline begin
-        "user_id:" ^ (
-          match user.id with
-          | Some id -> string_of_int id
-          | None -> "Unknown"
-        ) ^ ", "
-        ^ "message:" ^ message ^ ", "
-        ^ "channel_id:" ^ channel_id
-      end;
-      failwith "Not implemented"
+    match ensure_login req with
+    | None -> redirect_to_login
+    | Some user ->
+      match form_value dict "message", form_value dict "channel_id" with
+      | exception _ ->
+        no_content |> respond ~code:`Forbidden
+      | message, channel_id when message = "" || channel_id = "" ->
+        no_content |> respond ~code:`Forbidden
+      | message, channel_id ->
+        print_endline "POST /message";
+        print_endline begin
+          "user_id:" ^ (
+            match user.id with
+            | Some id -> string_of_int id
+            | None -> "Unknown"
+          ) ^ ", "
+          ^ "message:" ^ message ^ ", "
+          ^ "channel_id:" ^ channel_id
+        end;
+        failwith "Not implemented"
   end
 end
 
@@ -213,37 +210,42 @@ let get_history = get "/history" get_mock
 let get_profile = get "/profile/:user_name" begin fun req ->
   let user_name = param req "user_name" in
   print_endline ("GET /profile/" ^ user_name);
-  let self = ensure_login req in
-  let channels = M.Channel.all db in
-  match M.User.find_by_name db user_name with
-  | None -> no_content |> respond' ~code:`Not_found
-  | Some other ->
-    `Html (Views.Profile.html
-      ~channel_id:0
-      ~channels
-      ~user:self
-      ~other
-      ~self_profile:(self.id = other.id))
-    |> respond'
+  match ensure_login req with
+  | None -> redirect_to_login |> Lwt.return
+  | Some self ->
+    let channels = M.Channel.all db in
+    match M.User.find_by_name db user_name with
+    | None -> no_content |> respond' ~code:`Not_found
+    | Some other ->
+      `Html (Views.Profile.html
+               ~channel_id:0
+               ~channels
+               ~user:self
+               ~other
+               ~self_profile:(self.id = other.id))
+      |> respond'
 end
 
 let get_add_channel = get "/add_channel" begin fun req ->
   print_endline "GET /add_channel";
-  let user = ensure_login req in
-  let channels = M.Channel.all db in
-  `Html (Views.Add_channel.html ~channels ~user) |> respond'
+  match ensure_login req with
+  | None -> redirect_to_login |> Lwt.return
+  | Some user ->
+    let channels = M.Channel.all db in
+    `Html (Views.Add_channel.html ~channels ~user) |> respond'
 end
 
 let post_add_channel = post "/add_channel" begin fun req ->
   print_endline "POST /add_channel";
-  App.urlencoded_pairs_of_body req |> Lwt.map begin fun dict ->
+  match ensure_login req with
+  | None -> redirect_to_login |> Lwt.return
+  | Some _ -> App.urlencoded_pairs_of_body req |> Lwt.map begin fun dict ->
     match form_value dict "name", form_value dict "description" with
     | exception _ ->
       no_content |> respond ~code:`Bad_request
     | name, desc when name = "" || desc = "" ->
       no_content |> respond ~code:`Bad_request
     | name, desc ->
-      ensure_login req |> ignore;
       let last_id = M.Channel.insert db name desc in
       Printf.sprintf "/channel/%d" last_id
       |> Uri.of_string

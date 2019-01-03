@@ -1,4 +1,4 @@
-let html ~channels ~user description =
+let html ~channels ?user description =
   let open Tyxml in
   let%html user_content = {|
     <div class="row">
