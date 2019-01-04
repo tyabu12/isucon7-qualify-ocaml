@@ -6,6 +6,26 @@ let array_find_first arr f =
   in
   aux 0
 
+let is_digit = function
+  | '0' .. '9' -> true
+  | _ -> false
+
+(*
+  Check whether ascii string 's' is number.
+  The result may be wrong in diffecnt encoding string (like unicode) .
+*)
+let is_number s =
+  let len = String.length s in
+  let rec aux i =
+    if i = len then true
+    else
+      match s.[i] with
+      | c when is_digit c -> aux (succ i)
+      | _ -> false
+      | exception _ -> false
+  in
+  aux 0
+
 (* TODO: output error_log file? *)
 let or_die where = function
   | Ok res -> res
